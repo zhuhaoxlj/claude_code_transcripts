@@ -8,7 +8,7 @@ import type { Session } from './types';
  * Main App component - Claude Session Browser
  */
 function App() {
-  const { sessions, loading: sessionsLoading } = useSessions(100);
+  const { sessions, loading: sessionsLoading, deleteSession, toggleFavorite } = useSessions(100);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const { data: sessionData, loading: sessionLoading, error: sessionError } = useSession(
     selectedSession?.id || null
@@ -24,6 +24,17 @@ function App() {
   const handleSelectSession = useCallback((session: Session) => {
     setSelectedSession(session);
   }, []);
+
+  const handleDeleteSession = useCallback(async (sessionId: string) => {
+    const success = await deleteSession(sessionId);
+    if (success && selectedSession?.id === sessionId) {
+      setSelectedSession(sessions.find(s => s.id !== sessionId) || null);
+    }
+  }, [deleteSession, selectedSession, sessions]);
+
+  const handleToggleFavorite = useCallback(async (sessionId: string) => {
+    await toggleFavorite(sessionId);
+  }, [toggleFavorite]);
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">
@@ -46,6 +57,8 @@ function App() {
             selectedId={selectedSession?.id || null}
             onSelect={handleSelectSession}
             loading={sessionsLoading}
+            onDelete={handleDeleteSession}
+            onToggleFavorite={handleToggleFavorite}
           />
         </div>
 

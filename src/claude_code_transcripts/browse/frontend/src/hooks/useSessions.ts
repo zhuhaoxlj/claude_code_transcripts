@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { Session, SessionData } from '../types';
 
 const API_BASE = '/api';
@@ -11,24 +11,60 @@ export function useSessions(limit: number = 50) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function fetchSessions() {
-      try {
-        setLoading(true);
-        const res = await fetch(`${API_BASE}/sessions?limit=${limit}`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        setSessions(data.sessions || []);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unknown error');
-      } finally {
-        setLoading(false);
-      }
+  const refreshSessions = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(`${API_BASE}/sessions?limit=${limit}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setSessions(data.sessions || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
     }
-    fetchSessions();
   }, [limit]);
 
-  return { sessions, loading, error };
+  useEffect(() => {
+    refreshSessions();
+  }, [refreshSessions]);
+
+  const deleteSession = useCallback(async (sessionId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Remove from local state
+      setSessions(prev => prev.filter(s => s.id !== sessionId));
+      return true;
+    } catch (err) {
+      console.error('Failed to delete session:', err);
+      return false;
+    }
+  }, []);
+
+  const toggleFavorite = useCallback(async (sessionId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}/favorite`, {
+        method: 'POST',
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      // Update local state
+      setSessions(prev =>
+        prev.map(s =>
+          s.id === sessionId ? { ...s, isFavorite: data.isFavorite } : s
+        )
+      );
+      return data.isFavorite;
+    } catch (err) {
+      console.error('Failed to toggle favorite:', err);
+      return null;
+    }
+  }, []);
+
+  return { sessions, loading, error, deleteSession, toggleFavorite, refreshSessions };
 }
 
 /**

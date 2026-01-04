@@ -9,6 +9,7 @@ export interface Session {
   size: number;
   project: string;
   filePath: string;
+  isFavorite?: boolean;
 }
 
 export interface ContentBlock {
