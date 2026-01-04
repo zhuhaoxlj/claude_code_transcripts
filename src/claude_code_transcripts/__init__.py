@@ -114,6 +114,9 @@ def get_session_summary(filepath, max_length=200):
 
 def _get_jsonl_summary(filepath, max_length=200):
     """Extract summary from JSONL file."""
+    user_message = None
+    assistant_message = None
+
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             for line in f:
@@ -122,36 +125,59 @@ def _get_jsonl_summary(filepath, max_length=200):
                     continue
                 try:
                     obj = json.loads(line)
+                    entry_type = obj.get("type")
+
                     # First priority: summary type entries
-                    if obj.get("type") == "summary" and obj.get("summary"):
+                    if entry_type == "summary" and obj.get("summary"):
                         summary = obj["summary"]
                         if len(summary) > max_length:
                             return summary[: max_length - 3] + "..."
                         return summary
-                except json.JSONDecodeError:
-                    continue
 
-        # Second pass: find first non-meta user message
-        with open(filepath, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
+                    # Collect first user message (non-meta)
                     if (
-                        obj.get("type") == "user"
+                        entry_type == "user"
+                        and user_message is None
                         and not obj.get("isMeta")
                         and obj.get("message", {}).get("content")
                     ):
                         content = obj["message"]["content"]
                         text = extract_text_from_content(content)
                         if text and not text.startswith("<"):
-                            if len(text) > max_length:
-                                return text[: max_length - 3] + "..."
-                            return text
+                            user_message = text
+
+                    # Collect first assistant text response (non tool_use)
+                    if entry_type == "assistant" and assistant_message is None:
+                        content = obj.get("message", {}).get("content", [])
+                        if isinstance(content, list):
+                            for block in content:
+                                if (
+                                    isinstance(block, dict)
+                                    and block.get("type") == "text"
+                                    and block.get("text")
+                                ):
+                                    assistant_message = block["text"]
+                                    break
+
+                    # If we have both, we can make a decision
+                    if user_message and assistant_message:
+                        break
+
                 except json.JSONDecodeError:
                     continue
+
+        # Prefer assistant message if available (more descriptive)
+        if assistant_message:
+            summary = assistant_message
+            if len(summary) > max_length:
+                summary = summary[: max_length - 3] + "..."
+            return summary
+
+        # Fallback to user message
+        if user_message:
+            if len(user_message) > max_length:
+                return user_message[: max_length - 3] + "..."
+            return user_message
     except Exception:
         pass
 
@@ -2116,6 +2142,24 @@ def all_cmd(source, output, include_agents, dry_run, open_browser, quiet):
     if open_browser:
         index_url = (output / "index.html").resolve().as_uri()
         webbrowser.open(index_url)
+
+
+@cli.command("browse")
+@click.option(
+    "--port",
+    default=8765,
+    help="Port to run the server on (default: 8765)",
+)
+@click.option(
+    "--no-open",
+    is_flag=True,
+    help="Don't open browser automatically.",
+)
+def browse_cmd(port, no_open):
+    """Launch interactive session browser in your browser."""
+    from claude_code_transcripts.browse import run_browser
+
+    run_browser(port=port, open_browser=not no_open)
 
 
 def main():
