@@ -18,29 +18,40 @@ type GroupMode = 'none' | 'folder' | 'date';
 export function SessionList({ sessions, selectedId, onSelect, loading, onDelete, onToggleFavorite }: SessionListProps) {
   const [groupMode, setGroupMode] = useState<GroupMode>('none');
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+
+  // Filter sessions based on favorites filter
+  const getFilteredSessions = (): Session[] => {
+    if (showFavoritesOnly) {
+      return sessions.filter(s => s.isFavorite);
+    }
+    return sessions;
+  };
 
   // Helper to get all group keys
   const getAllGroupKeys = (): string[] => {
+    const filteredSessions = getFilteredSessions();
     let grouped: Record<string, Session[]> = {};
     if (groupMode === 'folder') {
-      grouped = groupByFolder(sessions);
+      grouped = groupByFolder(filteredSessions);
     } else if (groupMode === 'date') {
-      grouped = groupByDate(sessions);
+      grouped = groupByDate(filteredSessions);
     }
     return Object.keys(grouped);
   };
 
   // Initialize collapsed groups synchronously when group mode changes
   const changeGroupMode = (newMode: GroupMode) => {
+    const filteredSessions = getFilteredSessions();
     if (newMode === 'none') {
       setCollapsedGroups(new Set());
     } else {
       // Calculate collapsed groups before updating mode
       let grouped: Record<string, Session[]> = {};
       if (newMode === 'folder') {
-        grouped = groupByFolder(sessions);
+        grouped = groupByFolder(filteredSessions);
       } else if (newMode === 'date') {
-        grouped = groupByDate(sessions);
+        grouped = groupByDate(filteredSessions);
       }
       // Set collapsed groups first, then update mode
       setCollapsedGroups(new Set(Object.keys(grouped)));
@@ -236,35 +247,133 @@ export function SessionList({ sessions, selectedId, onSelect, loading, onDelete,
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center text-gray-500">
-        Loading sessions...
+      <div className="h-full flex flex-col">
+        <div className="px-2 py-2 border-b border-gray-200 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">Group by:</span>
+            <div className="flex gap-1">
+              <button className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-600" disabled>None</button>
+              <button className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-600" disabled>Folder</button>
+              <button className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-600" disabled>Date</button>
+            </div>
+          </div>
+          <button
+            className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-600"
+            disabled
+          >
+            Favorites
+          </button>
+        </div>
+        <div className="flex-1 flex items-center justify-center text-gray-500">
+          Loading sessions...
+        </div>
       </div>
     );
   }
 
-  if (sessions.length === 0) {
+  const filteredSessions = getFilteredSessions();
+  const hasSessions = sessions.length > 0;
+  const hasFilteredSessions = filteredSessions.length > 0;
+
+  if (!hasSessions) {
     return (
-      <div className="h-full flex items-center justify-center text-gray-500">
-        No sessions found
+      <div className="h-full flex flex-col">
+        <div className="px-2 py-2 border-b border-gray-200 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">Group by:</span>
+            <div className="flex gap-1">
+              <button className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-600" disabled>None</button>
+              <button className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-600" disabled>Folder</button>
+              <button className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-600" disabled>Date</button>
+            </div>
+          </div>
+          <button
+            className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-600"
+            disabled
+          >
+            Favorites
+          </button>
+        </div>
+        <div className="flex-1 flex items-center justify-center text-gray-500">
+          No sessions found
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasFilteredSessions) {
+    return (
+      <div className="h-full flex flex-col">
+        <div className="px-2 py-2 border-b border-gray-200 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">Group by:</span>
+            <div className="flex gap-1">
+              <button
+                className={`px-2 py-1 text-xs rounded transition-colors ${
+                  groupMode === 'none'
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+                onClick={() => changeGroupMode('none')}
+              >
+                None
+              </button>
+              <button
+                className={`px-2 py-1 text-xs rounded transition-colors ${
+                  groupMode === 'folder'
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+                onClick={() => changeGroupMode('folder')}
+              >
+                Folder
+              </button>
+              <button
+                className={`px-2 py-1 text-xs rounded transition-colors ${
+                  groupMode === 'date'
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+                onClick={() => changeGroupMode('date')}
+              >
+                Date
+              </button>
+            </div>
+          </div>
+          <button
+            className={`px-2 py-1 text-xs rounded transition-colors ${
+              showFavoritesOnly
+                ? 'bg-yellow-100 text-yellow-600'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+            onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+          >
+            Favorites
+          </button>
+        </div>
+        <div className="flex-1 flex items-center justify-center text-gray-500">
+          No favorite sessions found
+        </div>
       </div>
     );
   }
 
   // Render grouped sessions
   const renderGroupedSessions = () => {
+    const filteredSessions = getFilteredSessions();
     let grouped: Record<string, Session[]> = {};
     let groupKeys: string[] = [];
 
     if (groupMode === 'folder') {
-      grouped = groupByFolder(sessions);
+      grouped = groupByFolder(filteredSessions);
       groupKeys = Object.keys(grouped).sort();
     } else if (groupMode === 'date') {
-      grouped = groupByDate(sessions);
+      grouped = groupByDate(filteredSessions);
       groupKeys = Object.keys(grouped);
     }
 
     if (groupMode === 'none') {
-      return sessions.map(session => renderSessionItem(session));
+      return filteredSessions.map(session => renderSessionItem(session));
     }
 
     return groupKeys.map(groupKey => {
@@ -333,14 +442,26 @@ export function SessionList({ sessions, selectedId, onSelect, loading, onDelete,
             </button>
           </div>
         </div>
-        {groupMode !== 'none' && (
+        <div className="flex items-center gap-2">
+          {groupMode !== 'none' && (
+            <button
+              className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+              onClick={toggleAllGroups}
+            >
+              {collapsedGroups.size > 0 ? 'Expand All' : 'Collapse All'}
+            </button>
+          )}
           <button
-            className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
-            onClick={toggleAllGroups}
+            className={`px-2 py-1 text-xs rounded transition-colors ${
+              showFavoritesOnly
+                ? 'bg-yellow-100 text-yellow-600'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+            onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
           >
-            {collapsedGroups.size > 0 ? 'Expand All' : 'Collapse All'}
+            Favorites
           </button>
-        )}
+        </div>
       </div>
 
       {/* Session list */}
