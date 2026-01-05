@@ -490,10 +490,80 @@ def parse_session_file(filepath):
             return json.load(f)
 
 
-def _parse_jsonl_file(filepath):
-    """Parse JSONL file and convert to standard format."""
-    loglines = []
+def _find_agent_files(session_file):
+    """Find all agent files associated with a session file.
 
+    Args:
+        session_file: Path to the session JSONL file
+
+    Returns:
+        List of paths to agent files
+    """
+    session_id = session_file.stem
+    project_folder = session_file.parent
+
+    if not project_folder.exists():
+        return []
+
+    agent_files = []
+    for agent_file in project_folder.glob("agent-*.jsonl"):
+        try:
+            # Read the first line to check sessionId
+            with open(agent_file, "r", encoding="utf-8") as f:
+                first_line = f.readline().strip()
+                if first_line:
+                    obj = json.loads(first_line)
+                    if obj.get("sessionId") == session_id:
+                        agent_files.append(agent_file)
+        except (json.JSONDecodeError, IOError):
+            continue
+
+    return agent_files
+
+
+def _find_related_session_files(session_file, current_session_id):
+    """Find other session files in the same folder.
+
+    Args:
+        session_file: Path to the current session file
+        current_session_id: The current session's ID (to exclude it)
+
+    Returns:
+        List of paths to related session files
+    """
+    project_folder = session_file.parent
+
+    if not project_folder.exists():
+        return []
+
+    related_files = []
+    for session_file_path in project_folder.glob("*.jsonl"):
+        # Skip agent files and the current session
+        if session_file_path.name.startswith("agent-"):
+            continue
+        if session_file_path.stem == current_session_id:
+            continue
+
+        # Skip empty files
+        if session_file_path.stat().st_size == 0:
+            continue
+
+        related_files.append(session_file_path)
+
+    return related_files
+
+
+def _parse_jsonl_file(filepath):
+    """Parse JSONL file and convert to standard format.
+
+    Also reads and merges:
+    1. Agent files associated with this session
+    2. Related session files in the same folder (if current session has few messages)
+    """
+    loglines = []
+    current_session_id = filepath.stem
+
+    # Parse main session file
     with open(filepath, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -521,6 +591,83 @@ def _parse_jsonl_file(filepath):
                 loglines.append(entry)
             except json.JSONDecodeError:
                 continue
+
+    # Find and parse agent files
+    agent_files = _find_agent_files(filepath)
+    for agent_file in agent_files:
+        try:
+            with open(agent_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                        entry_type = obj.get("type")
+
+                        # Skip non-message entries
+                        if entry_type not in ("user", "assistant"):
+                            continue
+
+                        # Convert to standard format
+                        entry = {
+                            "type": entry_type,
+                            "timestamp": obj.get("timestamp", ""),
+                            "message": obj.get("message", {}),
+                        }
+
+                        # Preserve isCompactSummary if present
+                        if obj.get("isCompactSummary"):
+                            entry["isCompactSummary"] = True
+
+                        loglines.append(entry)
+                    except json.JSONDecodeError:
+                        continue
+        except IOError:
+            continue
+
+    # If current session has few messages, try to find and merge related sessions
+    if len(loglines) < 5:
+        related_files = _find_related_session_files(filepath, current_session_id)
+
+        # Sort related files by modification time (most recent first)
+        related_files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+
+        # Read up to 5 most recent related sessions
+        for related_file in related_files[:5]:
+            try:
+                with open(related_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            obj = json.loads(line)
+                            entry_type = obj.get("type")
+
+                            # Skip non-message entries
+                            if entry_type not in ("user", "assistant"):
+                                continue
+
+                            # Convert to standard format
+                            entry = {
+                                "type": entry_type,
+                                "timestamp": obj.get("timestamp", ""),
+                                "message": obj.get("message", {}),
+                            }
+
+                            # Preserve isCompactSummary if present
+                            if obj.get("isCompactSummary"):
+                                entry["isCompactSummary"] = True
+
+                            loglines.append(entry)
+                        except json.JSONDecodeError:
+                            continue
+            except IOError:
+                continue
+
+    # Sort by timestamp
+    loglines.sort(key=lambda x: x.get("timestamp", ""))
 
     return {"loglines": loglines}
 
